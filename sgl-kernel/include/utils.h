@@ -140,5 +140,4 @@ __device__ __forceinline__ float blockReduceMax(float max_value) {
 
   return max_value;
 }
-
 #endif
