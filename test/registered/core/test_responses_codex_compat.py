@@ -247,8 +247,6 @@ class TestValidatedToolOutputContentParts(CustomTestCase):
         self.assertEqual(message["content"], "done")
 
     def test_non_sequence_output_is_not_shredded(self):
-        # Iterating anything iterable would turn these into character or field
-        # streams; only real sequences and iterators are content-part arrays.
         for output in (bytearray(b"ab"), _request_with_namespace_tool()):
             with self.subTest(output=type(output).__name__):
                 message = OpenAIServingResponses._normalize_response_message_for_chat(
