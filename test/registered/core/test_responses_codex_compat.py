@@ -186,5 +186,80 @@ class TestToolOutputContentParts(CustomTestCase):
             self.assertEqual(parts[1]["image_url"]["url"], data_url)
 
 
+class TestValidatedToolOutputContentParts(CustomTestCase):
+    """Same conversion, but reached through request validation.
+
+    ``custom_tool_call_output.output`` is typed ``Iterable`` in the openai
+    params (``function_call_output`` uses ``List``), so pydantic validates it
+    to a lazy ``ValidatorIterator`` rather than a list -- which a ``list``
+    check misses, sending the iterator on to fail chat validation.
+    """
+
+    DATA_URL = "data:image/png;base64,iVBORw0KGgo="
+
+    def _validated_item(self, item_type):
+        request = ResponsesRequest(
+            model="test-model",
+            input=[
+                {"type": "message", "role": "user", "content": "what color?"},
+                {
+                    "type": item_type,
+                    "call_id": "call_1",
+                    "output": [
+                        {"type": "input_text", "text": "screenshot:"},
+                        {
+                            "type": "input_image",
+                            "image_url": self.DATA_URL,
+                            "detail": "auto",
+                        },
+                    ],
+                },
+            ],
+        )
+        return request.input[-1]
+
+    def test_validated_array_output_converts_to_content_parts(self):
+        for item_type in ("function_call_output", "custom_tool_call_output"):
+            with self.subTest(item_type=item_type):
+                message = OpenAIServingResponses._normalize_response_message_for_chat(
+                    self._validated_item(item_type)
+                )
+                parts = message["content"]
+                self.assertIsInstance(parts, list)
+                self.assertEqual(parts[0], {"type": "text", "text": "screenshot:"})
+                self.assertEqual(parts[1]["type"], "image_url")
+                self.assertEqual(parts[1]["image_url"]["url"], self.DATA_URL)
+
+    def test_validated_string_output_stays_a_string(self):
+        request = ResponsesRequest(
+            model="test-model",
+            input=[
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "call_1",
+                    "output": "done",
+                }
+            ],
+        )
+        message = OpenAIServingResponses._normalize_response_message_for_chat(
+            request.input[-1]
+        )
+        self.assertEqual(message["content"], "done")
+
+    def test_non_sequence_output_is_not_shredded(self):
+        # Iterating anything iterable would turn these into character or field
+        # streams; only real sequences and iterators are content-part arrays.
+        for output in (bytearray(b"ab"), _request_with_namespace_tool()):
+            with self.subTest(output=type(output).__name__):
+                message = OpenAIServingResponses._normalize_response_message_for_chat(
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_1",
+                        "output": output,
+                    }
+                )
+                self.assertIs(message["content"], output)
+
+
 if __name__ == "__main__":
     unittest.main()

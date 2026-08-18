@@ -11,7 +11,15 @@ import re
 import time
 from contextlib import AsyncExitStack
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    AsyncIterator,
+    Iterator,
+    Optional,
+    Union,
+)
 
 import jinja2
 import openai.types.responses as openai_responses_types
@@ -1255,7 +1263,11 @@ class OpenAIServingResponses(OpenAIServingChat):
             # through as normalized chat content parts so images reach the
             # model instead of being dropped (issues #33867 / #34927).
             out = message.get("output", "")
-            if isinstance(out, list):
+            # ``ResponseCustomToolCallOutputParam.output`` is typed ``Iterable``,
+            # so pydantic hands back a lazy ``ValidatorIterator`` rather than the
+            # ``list`` that ``function_call_output``'s ``List`` type produces.
+            # Iterating anything iterable instead would shred strings and models.
+            if isinstance(out, (list, tuple, Iterator)):
                 parts = [cls._normalize_response_content_part_for_chat(p) for p in out]
                 parts = [p for p in parts if isinstance(p, dict)]
                 if any(p.get("type") != "text" for p in parts):
